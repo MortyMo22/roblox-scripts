@@ -6,7 +6,7 @@
     ██████╔╝███████╗╚██████╔╝██╔╝ ██╗███████║
     ╚═════╝ ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝
     
-    Steel Titans - Tank ESP System v3.1
+    Steel Titans - Tank ESP System v3.1 FIXED
     Author: MortyMo22
     Game: Steel Titans
     
@@ -41,7 +41,7 @@ local EXCLUDED_MODELS = {
 local RAYCAST_DISTANCE = 10000
 local UPDATE_INTERVAL = 0.08
 local REGISTRATION_DELAY = 0.2
-local VISIBILITY_CHECK_INTERVAL = 0.15  -- Кэширование raycast результатов
+local VISIBILITY_CHECK_INTERVAL = 0.15
 
 --[[ ==================== DATA STRUCTURES ==================== ]]
 local ESPData = {
@@ -55,7 +55,7 @@ local ESPData = {
 local Flags = {
     ESPEnabled = false,
     TeamCheck = false,
-    VisibilityCheck = false,  -- НОВЫЙ TOGGLE!
+    VisibilityCheck = false,
     EnemyColor = Color3.fromRGB(255, 50, 50),
     VisibleColor = Color3.fromRGB(50, 200, 50),
     NotVisibleColor = Color3.fromRGB(255, 100, 100)
@@ -88,25 +88,24 @@ end
 --[[ ==================== TANK DETECTION ==================== ]]
 
 local function GetPlayerTank(Player)
-    return SafeCall(function()
-        local CharValue = Player:FindFirstChild("Char")
-        if not CharValue or not CharValue:IsA("StringValue") then return nil end
-        
-        local charVal = CharValue.Value
-        if not charVal or charVal == "" then return nil end
-        
-        if charVal == "Engine" then
-            for _, model in ipairs(Workspace:GetChildren()) do
-                if not IsInstanceValid(model) then continue end
-                if model:IsA("Model") and model:FindFirstChild("Owner") then
-                    local ownerVal = model:FindFirstChild("Owner")
-                    if ownerVal and ownerVal:IsA("StringValue") and ownerVal.Value == Player.Name then
-                        return model
-                    end
+    local CharValue = Player:FindFirstChild("Char")
+    if not CharValue or not CharValue:IsA("StringValue") then return nil end
+    
+    local charVal = CharValue.Value
+    if not charVal or charVal == "" then return nil end
+    
+    if charVal == "Engine" then
+        for _, model in ipairs(Workspace:GetChildren()) do
+            if not IsInstanceValid(model) then continue end
+            if model:IsA("Model") and model:FindFirstChild("Owner") then
+                local ownerVal = model:FindFirstChild("Owner")
+                if ownerVal and ownerVal:IsA("StringValue") and ownerVal.Value == Player.Name then
+                    return model
                 end
             end
         end
-    end)
+    end
+    
     return nil
 end
 
@@ -139,18 +138,16 @@ end
 local function IsPartVisible(targetPart)
     if not IsInstanceValid(targetPart) then return false end
     if not IsInstanceValid(Camera) then return true end
-    if not Flags.VisibilityCheck then return true end  -- Если toggle выключен - считаем всё видимым
+    if not Flags.VisibilityCheck then return true end
     
     local partId = targetPart:GetDebugId()
     local currentTime = tick()
     
-    -- Кэш на VISIBILITY_CHECK_INTERVAL секунд
     if ESPData.LastVisibilityCheck[partId] and 
        (currentTime - ESPData.LastVisibilityCheck[partId]) < VISIBILITY_CHECK_INTERVAL then
         return ESPData.VisibilityCache[partId] or false
     end
     
-    -- Проверяем видимость
     local isVisible = SafeCall(function()
         local rayOrigin = Camera.CFrame.Position
         local rayDirection = (targetPart.Position - rayOrigin).Unit * RAYCAST_DISTANCE
@@ -173,7 +170,6 @@ local function IsPartVisible(targetPart)
         return false
     end) or false
     
-    -- Кэшируем результат
     ESPData.VisibilityCache[partId] = isVisible
     ESPData.LastVisibilityCheck[partId] = currentTime
     
@@ -199,10 +195,8 @@ local function CreateHighlight(part, visible)
             local color
             
             if Flags.VisibilityCheck then
-                -- Если visibility check включен - разные цвета
                 color = visible and Flags.VisibleColor or Flags.NotVisibleColor
             else
-                -- Если visibility check выключен - один цвет для врагов
                 color = Flags.EnemyColor
             end
             
@@ -352,7 +346,6 @@ local function LoadUI()
         local main = app:AddSection("Tank ESP")
         local left, right = main:AddUnderSections("ESP Settings", "Colors")
         
-        -- LEFT COLUMN
         left:Label("Tank ESP System v3.1", {bold = true, topMargin = 10})
         
         left:Toggle("ESP Enabled", {
@@ -380,17 +373,15 @@ local function LoadUI()
             Default = false,
             Callback = function(state)
                 Flags.VisibilityCheck = state
-                -- Очищаем кэш при включении/выключении
                 ESPData.VisibilityCache = {}
                 ESPData.LastVisibilityCheck = {}
-                print("[Steel Titans] Visible Check " .. (state and "✓ Enabled (Different colors for visible/hidden)" or "✗ Disabled (One color for all)"))
+                print("[Steel Titans] Visible Check " .. (state and "✓ Enabled (Different colors)" or "✗ Disabled (One color)"))
             end
         })
         
         left:Separator()
         left:Label("Visible Check = LineOfSight detection", {italic = true})
         
-        -- RIGHT COLUMN
         right:Label("Color Settings", {bold = true, topMargin = 10})
         
         right:ToggleColor("Enemy Color", true, Flags.EnemyColor, function(state, color)
@@ -413,7 +404,6 @@ local function LoadUI()
         end)
         
         right:Label("(With Visible Check)", {italic = true, topMargin = 5})
-        
     end)
 end
 
@@ -506,7 +496,7 @@ end)
 
 --[[ ==================== INITIALIZATION ==================== ]]
 
-print("[Steel Titans ESP] Initializing system v3.1...")
+print("[Steel Titans ESP] Initializing system v3.1 FIXED...")
 LoadUI()
 task.wait(0.5)
 FullWorkspaceScan()

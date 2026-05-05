@@ -6,25 +6,22 @@
     ██████╔╝███████╗╚██████╔╝██╔╝ ██╗███████║
     ╚═════╝ ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝
     
-    Steel Titans - Tank ESP System v2.0
+    Steel Titans - Tank ESP System v3.0 HYBRID
     Author: MortyMo22
     Game: Steel Titans
     
-    Features:
-    - Real-time Tank ESP with Highlight
-    - LineOfSight detection (Visible/Not Visible)
+    Hybrid version combining:
+    - Reliable Char.Value detection
+    - Advanced LineOfSight visibility
     - Team Check system
     - Dual color rendering
-    - Memory leak protection
-    - Dynamic model scanning
-    - Fixed visibility detection
 ]]
 
 --[[ ==================== SERVICE INITIALIZATION ==================== ]]
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local Teams = game:GetService("Teams")
 
 local LocalPlayer = Players.LocalPlayer
@@ -41,14 +38,13 @@ local EXCLUDED_MODELS = {
 
 local RAYCAST_DISTANCE = 10000
 local UPDATE_INTERVAL = 0.08
-local REGISTRATION_DELAY = 0.3
+local REGISTRATION_DELAY = 0.2
 
 --[[ ==================== DATA STRUCTURES ==================== ]]
 local ESPData = {
     Tanks = {},
     LocalPlayerTank = nil,
-    LocalPlayerTeam = nil,
-    ProcessingQueue = {}
+    LocalPlayerTeam = nil
 }
 
 local Flags = {
@@ -82,19 +78,35 @@ local function IsInstanceValid(instance)
     return instance.Parent ~= nil
 end
 
-local function FindLocalPlayerTank()
-    for _, model in ipairs(Workspace:GetChildren()) do
-        if not IsInstanceValid(model) then continue end
-        if model:IsA("Model") and model:FindFirstChild("Owner") then
-            local ownerValue = model:FindFirstChild("Owner")
-            if ownerValue and ownerValue:IsA("StringValue") then
-                if ownerValue.Value == LocalPlayer.Name then
-                    return model
+--[[ ==================== TANK DETECTION - IMPROVED ==================== ]]
+
+local function GetPlayerTank(Player)
+    SafeCall(function()
+        local CharValue = Player:FindFirstChild("Char")
+        if not CharValue or not CharValue:IsA("StringValue") then return nil end
+        
+        local charVal = CharValue.Value
+        if not charVal or charVal == "" then return nil end
+        
+        -- Если игрок в бою (Engine существует)
+        if charVal == "Engine" then
+            -- Ищем модель по Owner
+            for _, model in ipairs(Workspace:GetChildren()) do
+                if not IsInstanceValid(model) then continue end
+                if model:IsA("Model") and model:FindFirstChild("Owner") then
+                    local ownerVal = model:FindFirstChild("Owner")
+                    if ownerVal and ownerVal:IsA("StringValue") and ownerVal.Value == Player.Name then
+                        return model
+                    end
                 end
             end
         end
-    end
+    end)
     return nil
+end
+
+local function FindLocalPlayerTank()
+    return GetPlayerTank(LocalPlayer)
 end
 
 local function GetPlayerTeam(playerName)
@@ -117,39 +129,43 @@ local function IsTeammate(playerName)
     return targetTeam == ESPData.LocalPlayerTeam
 end
 
---[[ ==================== LINEOFISGHT - IMPROVED ==================== ]]
+--[[ ==================== LINEOFISGHT - ADVANCED ==================== ]]
 
 local function IsPartVisible(targetPart)
     if not IsInstanceValid(targetPart) then return false end
     if not IsInstanceValid(Camera) then return true end
     
-    local rayOrigin = Camera.CFrame.Position
-    local rayDirection = (targetPart.Position - rayOrigin).Unit * RAYCAST_DISTANCE
+    SafeCall(function()
+        local rayOrigin = Camera.CFrame.Position
+        local rayDirection = (targetPart.Position - rayOrigin).Unit * RAYCAST_DISTANCE
+        
+        local raycastParams = RaycastParams.new()
+        raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+        
+        -- Исключаем свой танк из raycast'а
+        if ESPData.LocalPlayerTank then
+            raycastParams.FilterDescendantsInstances = {ESPData.LocalPlayerTank}
+        else
+            raycastParams.FilterDescendantsInstances = {}
+        end
+        
+        local rayResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
+        
+        -- Если raycast ничего не попал = видимо
+        if not rayResult then return true end
+        
+        -- Если попал в целевую часть = видимо
+        if rayResult.Instance == targetPart then return true end
+        
+        -- Если попал в другую часть того же танка = видимо
+        if targetPart.Parent and rayResult.Instance:IsDescendantOf(targetPart.Parent) then
+            return true
+        end
+        
+        -- Иначе = скрыто за стеной
+        return false
+    end)
     
-    local raycastParams = RaycastParams.new()
-    raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-    
-    -- Исключаем свой танк из raycast'а
-    if ESPData.LocalPlayerTank then
-        raycastParams.FilterDescendantsInstances = {ESPData.LocalPlayerTank}
-    else
-        raycastParams.FilterDescendantsInstances = {}
-    end
-    
-    local rayResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
-    
-    -- Если raycast ничего не попал = видимо
-    if not rayResult then return true end
-    
-    -- Если попал в целевую часть = видимо
-    if rayResult.Instance == targetPart then return true end
-    
-    -- Если попал в другую часть того же танка = видимо (части танка)
-    if targetPart.Parent and rayResult.Instance:IsDescendantOf(targetPart.Parent) then
-        return true
-    end
-    
-    -- Иначе = скрыто за стеной
     return false
 end
 
@@ -323,7 +339,7 @@ local function LoadUI()
         local main = app:AddSection("Tank ESP")
         local left, right = main:AddUnderSections("ESP Settings", "Colors")
         
-        left:Label("Tank ESP System", {bold = true, topMargin = 10})
+        left:Label("Tank ESP System v3.0", {bold = true, topMargin = 10})
         
         left:Toggle("ESP Enabled", {
             Default = false,
@@ -347,7 +363,7 @@ local function LoadUI()
         })
         
         left:Separator()
-        left:Label("Tanks in queue: 0", {italic = true})
+        left:Label("Char.Value detection", {italic = true})
         left:Label("Update: " .. UPDATE_INTERVAL .. "s", {italic = true})
         
         right:Label("Color Settings", {bold = true, topMargin = 10})
@@ -371,24 +387,31 @@ end
 
 local lastScan = 0
 local lastUpdate = 0
+local lastCharCheck = 0
 
 RunService.RenderStepped:Connect(function()
     local currentTime = tick()
     
+    -- Scan workspace every 1 second
     if currentTime - lastScan >= 1 then
         FullWorkspaceScan()
         lastScan = currentTime
     end
     
-    if currentTime - lastUpdate >= UPDATE_INTERVAL then
+    -- Check local player tank every 2 seconds
+    if currentTime - lastCharCheck >= 2 then
         if not IsInstanceValid(ESPData.LocalPlayerTank) then
             ESPData.LocalPlayerTank = FindLocalPlayerTank()
             if IsInstanceValid(ESPData.LocalPlayerTank) then
                 ESPData.LocalPlayerTeam = GetPlayerTeam(LocalPlayer.Name)
-                print("[Steel Titans] Local tank found!")
+                print("[Steel Titans] Local tank found via Char.Value!")
             end
         end
-        
+        lastCharCheck = currentTime
+    end
+    
+    -- Update ESP every UPDATE_INTERVAL seconds
+    if currentTime - lastUpdate >= UPDATE_INTERVAL then
         UpdateAllTanks()
         lastUpdate = currentTime
     end
@@ -427,12 +450,38 @@ Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
     end)
 end)
 
+--[[ ==================== CHAR VALUE MONITORING ==================== ]]
+
+LocalPlayer:FindFirstChild("Char"):GetPropertyChangedSignal("Value"):Connect(function()
+    SafeCall(function()
+        local charVal = LocalPlayer.Char.Value
+        if charVal == "Engine" then
+            -- Игрок вошёл в бой
+            task.wait(0.5)
+            ESPData.LocalPlayerTank = FindLocalPlayerTank()
+            if IsInstanceValid(ESPData.LocalPlayerTank) then
+                ESPData.LocalPlayerTeam = GetPlayerTeam(LocalPlayer.Name)
+                print("[Steel Titans] Player entered battle - tank found!")
+            end
+        else
+            -- Игрок вышел из боя
+            print("[Steel Titans] Player left battle")
+            ESPData.LocalPlayerTank = nil
+            ESPData.LocalPlayerTeam = nil
+            for tankModel, _ in pairs(ESPData.Tanks) do
+                RemoveHighlights(tankModel)
+            end
+        end
+    end)
+end)
+
 --[[ ==================== INITIALIZATION ==================== ]]
 
-print("[Steel Titans ESP] Initializing system v2.0...")
+print("[Steel Titans ESP] Initializing system v3.0 HYBRID...")
 LoadUI()
 task.wait(0.5)
 FullWorkspaceScan()
 
 print("[Steel Titans ESP] ✓ Loaded successfully!")
+print("[Steel Titans ESP] Using Char.Value detection for tank identification")
 print("[Steel Titans ESP] Settings: ESPEnabled=" .. tostring(Flags.ESPEnabled) .. " | TeamCheck=" .. tostring(Flags.TeamCheck))

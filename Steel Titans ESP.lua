@@ -6,23 +6,20 @@
     ██████╔╝███████╗╚██████╔╝██╔╝ ██╗███████║
     ╚═════╝ ╚══════╝ ╚═════╝ ╚═╝  ╚═╝╚══════╝
     
-    Steel Titans - Tank ESP System v3.1 FIXED
+    Steel Titans - Tank ESP System v3.2 FINAL
     Author: MortyMo22
     Game: Steel Titans
     
     Features:
     - Real-time Tank ESP with Highlight
-    - Optional LineOfSight detection (Visible/Not Visible)
+    - Optional LineOfSight detection
     - Team Check system
     - Dual color rendering
-    - Memory leak protection
-    - Dynamic model scanning
 ]]
 
 --[[ ==================== SERVICE INITIALIZATION ==================== ]]
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
-local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Teams = game:GetService("Teams")
 
@@ -74,7 +71,6 @@ local function SafeCall(func, ...)
     local success, result = pcall(func, ...)
     if not success then
         warn("[Steel Titans ESP] Error:", result)
-        return nil
     end
     return result
 end
@@ -133,7 +129,7 @@ local function IsTeammate(playerName)
     return targetTeam == ESPData.LocalPlayerTeam
 end
 
---[[ ==================== LINEOFISGHT - CACHED ==================== ]]
+--[[ ==================== LINEOFISGHT ==================== ]]
 
 local function IsPartVisible(targetPart)
     if not IsInstanceValid(targetPart) then return false end
@@ -148,7 +144,8 @@ local function IsPartVisible(targetPart)
         return ESPData.VisibilityCache[partId] or false
     end
     
-    local isVisible = SafeCall(function()
+    local isVisible = false
+    SafeCall(function()
         local rayOrigin = Camera.CFrame.Position
         local rayDirection = (targetPart.Position - rayOrigin).Unit * RAYCAST_DISTANCE
         
@@ -163,12 +160,21 @@ local function IsPartVisible(targetPart)
         
         local rayResult = Workspace:Raycast(rayOrigin, rayDirection, raycastParams)
         
-        if not rayResult then return true end
-        if rayResult.Instance == targetPart then return true end
-        if targetPart.Parent and rayResult.Instance:IsDescendantOf(targetPart.Parent) then return true end
+        if not rayResult then 
+            isVisible = true
+            return
+        end
+        if rayResult.Instance == targetPart then 
+            isVisible = true
+            return
+        end
+        if targetPart.Parent and rayResult.Instance:IsDescendantOf(targetPart.Parent) then 
+            isVisible = true
+            return
+        end
         
-        return false
-    end) or false
+        isVisible = false
+    end)
     
     ESPData.VisibilityCache[partId] = isVisible
     ESPData.LastVisibilityCheck[partId] = currentTime
@@ -192,12 +198,10 @@ local function CreateHighlight(part, visible)
         end
         
         if IsInstanceValid(highlight) then
-            local color
+            local color = Flags.EnemyColor
             
             if Flags.VisibilityCheck then
                 color = visible and Flags.VisibleColor or Flags.NotVisibleColor
-            else
-                color = Flags.EnemyColor
             end
             
             highlight.FillColor = color
@@ -272,7 +276,7 @@ local function RegisterTank(tankModel)
             Registered = true
         }
         
-        print("[Steel Titans] Tank registered: " .. tankModel.Name .. " (Owner: " .. ownerName .. ")")
+        print("[Steel Titans] Tank registered: " .. tankModel.Name)
     end)
 end
 
@@ -301,7 +305,7 @@ local function ShouldShowESP(tankModel)
     return true
 end
 
---[[ ==================== MAIN SCANNING SYSTEM ==================== ]]
+--[[ ==================== MAIN SCANNING ==================== ]]
 
 local function FullWorkspaceScan()
     SafeCall(function()
@@ -339,72 +343,67 @@ end
 --[[ ==================== UI SYSTEM ==================== ]]
 
 local function LoadUI()
-    SafeCall(function()
-        local UI = loadstring(game:HttpGet("https://raw.githubusercontent.com/MortyMo22/ui-libs/refs/heads/main/New%20UI"))()
-        
-        local app = UI.CreateWindow("Steel Titans ESP", "User: " .. LocalPlayer.UserId)
-        local main = app:AddSection("Tank ESP")
-        local left, right = main:AddUnderSections("ESP Settings", "Colors")
-        
-        left:Label("Tank ESP System v3.1", {bold = true, topMargin = 10})
-        
-        left:Toggle("ESP Enabled", {
-            Default = false,
-            Callback = function(state)
-                Flags.ESPEnabled = state
-                if not state then
-                    for tankModel, _ in pairs(ESPData.Tanks) do
-                        RemoveHighlights(tankModel)
-                    end
+    local UI = loadstring(game:HttpGet("https://raw.githubusercontent.com/MortyMo22/ui-libs/refs/heads/main/New%20UI"))()
+    
+    local app = UI.CreateWindow("Steel Titans ESP", "User: " .. LocalPlayer.UserId)
+    local main = app:AddSection("Tank ESP")
+    local left, right = main:AddUnderSections("ESP Settings", "Colors")
+    
+    left:Label("Tank ESP System v3.2", {bold = true, topMargin = 10})
+    
+    left:Toggle("ESP Enabled", {
+        Default = false,
+        Callback = function(state)
+            Flags.ESPEnabled = state
+            if not state then
+                for tankModel, _ in pairs(ESPData.Tanks) do
+                    RemoveHighlights(tankModel)
                 end
-                print("[Steel Titans] ESP " .. (state and "✓ Enabled" or "✗ Disabled"))
             end
-        })
-        
-        left:Toggle("Team Check", {
-            Default = false,
-            Callback = function(state)
-                Flags.TeamCheck = state
-                print("[Steel Titans] Team Check " .. (state and "✓ Enabled" or "✗ Disabled"))
-            end
-        })
-        
-        left:Toggle("Visible Check", {
-            Default = false,
-            Callback = function(state)
-                Flags.VisibilityCheck = state
-                ESPData.VisibilityCache = {}
-                ESPData.LastVisibilityCheck = {}
-                print("[Steel Titans] Visible Check " .. (state and "✓ Enabled (Different colors)" or "✗ Disabled (One color)"))
-            end
-        })
-        
-        left:Separator()
-        left:Label("Visible Check = LineOfSight detection", {italic = true})
-        
-        right:Label("Color Settings", {bold = true, topMargin = 10})
-        
-        right:ToggleColor("Enemy Color", true, Flags.EnemyColor, function(state, color)
-            Flags.EnemyColor = color
-            print("[Steel Titans] Enemy Color Updated")
-        end)
-        
-        right:Label("(Without Visible Check)", {italic = true, topMargin = 5})
-        
-        right:Separator()
-        
-        right:ToggleColor("Visible Parts", true, Flags.VisibleColor, function(state, color)
-            Flags.VisibleColor = color
-            print("[Steel Titans] Visible Color Updated")
-        end)
-        
-        right:ToggleColor("Hidden Parts", true, Flags.NotVisibleColor, function(state, color)
-            Flags.NotVisibleColor = color
-            print("[Steel Titans] Hidden Color Updated")
-        end)
-        
-        right:Label("(With Visible Check)", {italic = true, topMargin = 5})
+            print("[Steel Titans] ESP " .. (state and "✓ ON" or "✗ OFF"))
+        end
+    })
+    
+    left:Toggle("Team Check", {
+        Default = false,
+        Callback = function(state)
+            Flags.TeamCheck = state
+            print("[Steel Titans] Team Check " .. (state and "✓ ON" or "✗ OFF"))
+        end
+    })
+    
+    left:Toggle("Visible Check", {
+        Default = false,
+        Callback = function(state)
+            Flags.VisibilityCheck = state
+            ESPData.VisibilityCache = {}
+            ESPData.LastVisibilityCheck = {}
+            print("[Steel Titans] Visible Check " .. (state and "✓ ON" or "✗ OFF"))
+        end
+    })
+    
+    left:Separator()
+    left:Label("LineOfSight detection", {italic = true})
+    
+    right:Label("Color Settings", {bold = true, topMargin = 10})
+    
+    right:ToggleColor("Enemy Color", true, Flags.EnemyColor, function(state, color)
+        Flags.EnemyColor = color
+        print("[Steel Titans] Enemy Color Updated")
     end)
+    
+    right:Label("(Default - all enemies)", {italic = true, topMargin = 5})
+    right:Separator()
+    
+    right:ToggleColor("Visible", true, Flags.VisibleColor, function(state, color)
+        Flags.VisibleColor = color
+    end)
+    
+    right:ToggleColor("Hidden", true, Flags.NotVisibleColor, function(state, color)
+        Flags.NotVisibleColor = color
+    end)
+    
+    right:Label("(With Visible Check ON)", {italic = true, topMargin = 5})
 end
 
 --[[ ==================== MAIN LOOP ==================== ]]
@@ -426,7 +425,7 @@ RunService.RenderStepped:Connect(function()
             ESPData.LocalPlayerTank = FindLocalPlayerTank()
             if IsInstanceValid(ESPData.LocalPlayerTank) then
                 ESPData.LocalPlayerTeam = GetPlayerTeam(LocalPlayer.Name)
-                print("[Steel Titans] Local tank found via Char.Value!")
+                print("[Steel Titans] Local tank found!")
             end
         end
         lastCharCheck = currentTime
@@ -463,8 +462,6 @@ Workspace.ChildRemoved:Connect(function(child)
     end)
 end)
 
---[[ ==================== CAMERA TRACKING ==================== ]]
-
 Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
     SafeCall(function()
         Camera = Workspace.CurrentCamera
@@ -481,10 +478,10 @@ LocalPlayer:FindFirstChild("Char"):GetPropertyChangedSignal("Value"):Connect(fun
             ESPData.LocalPlayerTank = FindLocalPlayerTank()
             if IsInstanceValid(ESPData.LocalPlayerTank) then
                 ESPData.LocalPlayerTeam = GetPlayerTeam(LocalPlayer.Name)
-                print("[Steel Titans] Player entered battle - tank found!")
+                print("[Steel Titans] Battle started!")
             end
         else
-            print("[Steel Titans] Player left battle")
+            print("[Steel Titans] Battle ended")
             ESPData.LocalPlayerTank = nil
             ESPData.LocalPlayerTeam = nil
             for tankModel, _ in pairs(ESPData.Tanks) do
@@ -496,11 +493,9 @@ end)
 
 --[[ ==================== INITIALIZATION ==================== ]]
 
-print("[Steel Titans ESP] Initializing system v3.1 FIXED...")
+print("[Steel Titans ESP] Loading v3.2...")
 LoadUI()
 task.wait(0.5)
 FullWorkspaceScan()
 
-print("[Steel Titans ESP] ✓ Loaded successfully!")
-print("[Steel Titans ESP] Using Char.Value detection for tank identification")
-print("[Steel Titans ESP] Settings: ESPEnabled=" .. tostring(Flags.ESPEnabled) .. " | TeamCheck=" .. tostring(Flags.TeamCheck) .. " | VisibleCheck=" .. tostring(Flags.VisibilityCheck))
+print("[Steel Titans ESP] ✓ Successfully loaded!")

@@ -1,0 +1,127 @@
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local HttpService = game:GetService("HttpService")
+
+-- GUI
+local ScreenGui = Instance.new("ScreenGui", game.CoreGui)
+ScreenGui.Name = "BackdoorFinderV4"
+
+local Frame = Instance.new("Frame", ScreenGui)
+Frame.Size = UDim2.new(0, 450, 0, 400)
+Frame.Position = UDim2.new(0, 40, 0, 40)
+Frame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+Frame.Active = true
+Frame.Draggable = true
+
+local Title = Instance.new("TextLabel", Frame)
+Title.Size = UDim2.new(1, 0, 0, 30)
+Title.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+Title.Text = "🔍 Backdoor Finder V4 — Real Analyzer"
+Title.TextColor3 = Color3.new(1, 1, 1)
+Title.Font = Enum.Font.SourceSansBold
+Title.TextSize = 20
+
+local Scroll = Instance.new("ScrollingFrame", Frame)
+Scroll.Size = UDim2.new(1, -10, 1, -40)
+Scroll.Position = UDim2.new(0, 5, 0, 35)
+Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+Scroll.ScrollBarThickness = 4
+Scroll.BackgroundTransparency = 1
+
+local Layout = Instance.new("UIListLayout", Scroll)
+Layout.Padding = UDim.new(0, 4)
+
+local function log(text, color)
+    local lbl = Instance.new("TextLabel", Scroll)
+    lbl.Size = UDim2.new(1, -4, 0, 22)
+    lbl.BackgroundColor3 = color or Color3.fromRGB(50, 50, 50)
+    lbl.TextColor3 = Color3.new(1, 1, 1)
+    lbl.Font = Enum.Font.SourceSans
+    lbl.TextSize = 16
+    lbl.TextXAlignment = Enum.TextXAlignment.Left
+    lbl.Text = text
+    Scroll.CanvasSize = UDim2.new(0, 0, 0, Layout.AbsoluteContentSize.Y + 10)
+end
+
+log("▶ Начинаю анализ…", Color3.fromRGB(70, 70, 70))
+
+-- Список подозрительных Remote
+local suspiciousRemotes = {}
+
+-- Список опасных ключевых слов
+local dangerousPatterns = {
+    "loadstring",
+    "require",
+    "getfenv",
+    "setfenv",
+    "HttpGet",
+    "RunString",
+    "Execute",
+    "Admin",
+    "Command",
+    "Owner"
+}
+
+-- Проверка ModuleScript / Script
+local function analyzeScript(scr)
+    local src
+    pcall(function()
+        src = scr.Source
+    end)
+    if not src then return end
+
+    for _, pattern in ipairs(dangerousPatterns) do
+        if src:lower():find(pattern:lower()) then
+            log("⚠ Подозрительный Script: " .. scr:GetFullName(), Color3.fromRGB(180, 0, 0))
+            return
+        end
+    end
+end
+
+-- Проверка RemoteEvent/RemoteFunction
+local function analyzeRemote(remote)
+    local name = remote.Name:lower()
+
+    -- Подозрительные имена
+    for _, pattern in ipairs(dangerousPatterns) do
+        if name:find(pattern:lower()) then
+            log("⚠ Подозрительное имя Remote: " .. remote:GetFullName(), Color3.fromRGB(255, 120, 0))
+        end
+    end
+
+    -- Проверка на открытый RemoteEvent
+    if remote:IsA("RemoteEvent") then
+        local success, err = pcall(function()
+            remote:FireServer({})
+        end)
+
+        if success then
+            log("🔥 Открытый RemoteEvent (принимает любые данные): " .. remote:GetFullName(), Color3.fromRGB(255, 0, 0))
+        end
+    end
+
+    -- Проверка RemoteFunction
+    if remote:IsA("RemoteFunction") then
+        local success, result = pcall(function()
+            return remote:InvokeServer({})
+        end)
+
+        if success then
+            log("⚠ RemoteFunction возвращает данные: " .. remote:GetFullName(), Color3.fromRGB(255, 150, 0))
+        end
+    end
+end
+
+-- Основной анализ
+for _, obj in ipairs(game:GetDescendants()) do
+    if obj:IsA("Script") or obj:IsA("LocalScript") or obj:IsA("ModuleScript") then
+        analyzeScript(obj)
+    end
+
+    if obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction") then
+        analyzeRemote(obj)
+    end
+end
+
+log("✔ Анализ завершён", Color3.fromRGB(0, 170, 0))

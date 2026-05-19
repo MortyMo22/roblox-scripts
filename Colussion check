@@ -1,0 +1,137 @@
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+-- GUI Setup
+local function createGUI()
+	local ScreenGui = Instance.new("ScreenGui")
+	ScreenGui.Name = "CollisionCheckGUI"
+	ScreenGui.ResetOnSpawn = false
+	ScreenGui.Parent = game:GetService("CoreGui")
+
+	local MainFrame = Instance.new("Frame", ScreenGui)
+	MainFrame.Size = UDim2.new(0, 300, 0, 360)
+	MainFrame.Position = UDim2.new(0, 30, 0, 30)
+	MainFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+	MainFrame.BorderSizePixel = 0
+	MainFrame.Active = true
+	MainFrame.Draggable = true
+
+	local Title = Instance.new("TextLabel", MainFrame)
+	Title.Size = UDim2.new(1, 0, 0, 30)
+	Title.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+	Title.Text = "🧪 Проверка коллизии (P)"
+	Title.TextColor3 = Color3.new(1, 1, 1)
+	Title.Font = Enum.Font.SourceSansBold
+	Title.TextSize = 20
+
+	local Scroll = Instance.new("ScrollingFrame", MainFrame)
+	Scroll.Size = UDim2.new(1, -10, 1, -40)
+	Scroll.Position = UDim2.new(0, 5, 0, 35)
+	Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+	Scroll.ScrollBarThickness = 4
+	Scroll.BackgroundTransparency = 1
+
+	local ListLayout = Instance.new("UIListLayout", Scroll)
+	ListLayout.Padding = UDim.new(0, 4)
+	ListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+	return {
+		gui = ScreenGui,
+		scroll = Scroll,
+		listLayout = ListLayout,
+		entries = {}
+	}
+end
+
+local guiData = createGUI()
+
+-- Проверка коллизии через "пробник"
+local function checkPlayerCollision(targetHRP)
+	local probe = Instance.new("Part")
+	probe.Size = Vector3.new(0.5, 0.5, 0.5)
+	probe.Anchored = false
+	probe.CanCollide = true
+	probe.Transparency = 1
+	probe.CFrame = targetHRP.CFrame + Vector3.new(0, 0, -0.2)
+	probe.Velocity = Vector3.new(0, 0, 5)
+	probe.Name = "CollisionProbe"
+	probe.Parent = workspace
+
+	local touched = false
+	local connection
+
+	connection = probe.Touched:Connect(function(hit)
+		if hit:IsDescendantOf(targetHRP.Parent) then
+			touched = true
+		end
+	end)
+
+	task.wait(0.15)
+	connection:Disconnect()
+	probe:Destroy()
+
+	return touched
+end
+
+-- Создание строки GUI
+local function updateEntry(name, result)
+	local entry = guiData.entries[name]
+
+	if not entry then
+		entry = Instance.new("TextLabel")
+		entry.Size = UDim2.new(1, -4, 0, 26)
+		entry.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+		entry.TextColor3 = Color3.new(1, 1, 1)
+		entry.Font = Enum.Font.SourceSans
+		entry.TextSize = 18
+		entry.TextXAlignment = Enum.TextXAlignment.Left
+		entry.Name = name
+		entry.Parent = guiData.scroll
+		guiData.entries[name] = entry
+	end
+
+	if result == true then
+		entry.Text = name .. " ✅"
+		entry.BackgroundColor3 = Color3.fromRGB(0, 170, 0)
+	elseif result == false then
+		entry.Text = name .. " ❌"
+		entry.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
+	else
+		entry.Text = name .. " ⛔ Не найден"
+		entry.BackgroundColor3 = Color3.fromRGB(90, 90, 90)
+	end
+
+	guiData.scroll.CanvasSize = UDim2.new(0, 0, 0, guiData.listLayout.AbsoluteContentSize.Y + 10)
+end
+
+-- Проверка всех игроков
+local function runCollisionCheck()
+	local myChar = LocalPlayer.Character
+	local myHRP = myChar and myChar:FindFirstChild("HumanoidRootPart")
+	if not myHRP then return end
+
+	for _, plr in pairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer then
+			local char = plr.Character
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
+
+			if hrp then
+				local hasCollision = checkPlayerCollision(hrp)
+				updateEntry(plr.Name, hasCollision)
+			else
+				updateEntry(plr.Name, nil)
+			end
+		end
+	end
+end
+
+-- Горячая клавиша
+UserInputService.InputBegan:Connect(function(input, gp)
+	if gp then return end
+	if input.KeyCode == Enum.KeyCode.P then
+		print("▶ Запущена проверка коллизии...")
+		runCollisionCheck()
+	end
+end)
